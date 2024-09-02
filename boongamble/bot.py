@@ -255,7 +255,7 @@ def main() -> None:
                 )
 
                 logger.info(
-                    f"User {username} sent b{boons:.2f} and got b{out_value:.2f} back (bank status estimate: {(our_boons - out_value):.2f})"
+                    f"User {username} sent b{boons:.2f} and got b{out_value:.2f} back (bank status estimate: {(our_boons + boons - out_value):.2f})"
                 )
 
                 state["handled_alerts"] += 1
