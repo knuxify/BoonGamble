@@ -1,0 +1,15 @@
+# BoonGambler config file
+
+## Login info
+username: fixme
+email: fixme@example.com
+password: "fixme"
+cookie_file: "_cookies.pkl"
+
+## Operation parameters
+
+# Maximum multiplier for b00n wins
+max_multiplier: 4
+
+# Cooldown in seconds (time between two attempts)
+cooldown: 300

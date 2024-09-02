@@ -1,0 +1,8 @@
+.venv/
+
+*.pyc
+__pycache__/
+
+_state.yml
+_cookies.pkl
+config.yml

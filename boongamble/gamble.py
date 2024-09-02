@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: MIT
+"""
+Win multiplier calculation code.
+
+Preamble
+============
+
+The calculation must meet two goals:
+
+- The more you pay, the higher the reward, and the higher the risk;
+- The bot must be able to pay for itself, i.e. the win rate shouldn't be
+  *too* high, but at the same time it must be high enough for people to
+  play.
+
+I am not an expert in programming gambling probabilities, so this is
+a naive approach that may or may not be tweaked in the future.
+
+How it works
+============
+
+There are two parameters to the win calculation:
+
+- The input value - the amount paid by the player.
+- The max value - the maximum amount that can be paid.
+
+...see gamble() function for more info.
+"""
+
+from .config import config
+from . import logger
+
+import secrets
+from typing import Union
+
+# Debug option that allows for viewing the cubic bezier plot.
+GAMBLE_DEBUG: bool = config.get("gamble_debug", False)
+if GAMBLE_DEBUG:
+    import matplotlib.pyplot as plt
+
+    # adapted from https://github.com/isinsuatay/Cubic-Bezier-With-Python/blob/main/CubicBezier.py
+    def cubic_bezier_plot(p0, p1, p2, p3):
+        x_values = []
+        y_values = []
+        t = 0
+        while t <= 1:
+            x, y = cubic_bezier(t, p0, p1, p2, p3)
+            x_values.append(x)
+            y_values.append(y)
+            t += 0.01
+
+        plt.plot(x_values, y_values, label="Probability curve", color="blue")
+
+        plt.scatter([p0[0]], [p0[1]], label="p0", color="red")
+        plt.scatter([p1[0]], [p1[1]], label="p1", color="orange")
+        plt.scatter([p2[0]], [p2[1]], label="p2", color="yellow")
+        plt.scatter([p3[0]], [p3[1]], label="p3", color="green")
+
+        plt.title("Probability curve")
+        plt.legend()
+        plt.grid(True)
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        # plt.axis('equal')
+
+        plt.show()
+
+
+MAX_MULTIPLIER = config.get("max_multiplier", 4)
+
+
+# max allowed value is based on total bank value;
+# at most, a lucky win matching the full max multiplier must not drain
+# the account below 1/2 of its contents
+def to_max_value(boons):
+    """Take boon count and calculate maximum allowed value."""
+    return boons / MAX_MULTIPLIER / 2
+
+
+# math stolen from:
+# https://blog.maximeheckel.com/posts/cubic-bezier-from-math-to-motion/
+def cubic_bezier(
+    t,
+    p0: [Union[int, float], Union[int, float]],
+    p1: [Union[int, float], Union[int, float]],
+    p2: [Union[int, float], Union[int, float]],
+    p3: [Union[int, float], Union[int, float]],
+):
+    out = [0, 0]
+    for i in range(2):
+        out[i] = (
+            (1 - t) ** 3 * p0[i]
+            + t * p1[i] * (3 * (1 - t) ** 2)
+            + p2[i] * (3 * (1 - t) * t**2)
+            + p3[i] * t**3
+        )
+    return out
+
+
+def gamble(input_value: float, max_value: float) -> float:
+    """
+    Calculate probability table based on provided values.
+    """
+    show_stats = False
+
+    if input_value > max_value:
+        raise ValueError("Input value is larger than maximum value")
+
+    # Get the random value we use for calculations.
+    rand = secrets.randbelow(100) / 100
+
+    # The closer the input value to the maximum value, the more difficult we make it.
+    risk = input_value / max_value
+    assert risk >= 0 and risk <= 1
+
+    # The minimum risk value is 0.6:
+    if risk < 0.6:
+        risk = 0.6
+    # Otherwise, scale down the risk so that the max value is 0.95.
+    else:
+        risk = risk * 0.95
+
+    # We use a cubic bezier curve to calculate the initial multiplier.
+    # Cubic bezier is perhaps not the most obvious choice for this kind of
+    # calculation, most notably being used for CSS animations, but 1. it's
+    # all that I have experience in, and 2. it's just simple enough to be
+    # easy to implement and it's customizable enough for our usecase.
+    p0 = (0, 0)
+    p1 = (risk, (MAX_MULTIPLIER / 2))
+    p2 = (risk, -(risk))
+    p3 = (1, MAX_MULTIPLIER)
+
+    mult = None
+    for t in range(0, 101):
+        curve = cubic_bezier(t / 100, p0, p1, p2, p3)
+        if int(curve[0] * 100) >= int(rand * 100):
+            mult = curve[1]
+            break
+    if mult is None:
+        logger.warning("mult was not found for X (this probably doesn't happen), TODO")
+        show_stats = True
+        mult = cubic_bezier(rand, p0, p1, p2, p3)[1]
+
+    assert mult is not None
+
+    # Once that's done, we can get the output boon count :D
+    out_value = input_value * mult
+
+    # Round the output value down to 2 decimal points
+    out_value = round(out_value, 2)
+
+    if GAMBLE_DEBUG or show_stats:
+        logger.info(f"""--- GAMBLE STATS ---
+        -> Input b{input_value}, max b{max_value}, output b{input_value * mult}
+        -> Risk {risk}
+        -> Random value {rand} -- multiplier {mult}""")
+    if GAMBLE_DEBUG:
+        cubic_bezier_plot(p0, p1, p2, p3)
+
+    return out_value
