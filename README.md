@@ -45,3 +45,5 @@ $ poetry install  # get dependencies
 $ poetry shell    # open shell with venv
 (...venv...) $ python3 -m boongamble
 ```
+
+You can bypass the gamble and deposit money directly in the bot by setting the message to `!boonsave`.
