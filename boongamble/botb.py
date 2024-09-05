@@ -11,6 +11,7 @@ from enum import Enum
 import re
 import requests
 from requests.adapters import HTTPAdapter, Retry
+import time
 import pickle
 import pytz
 import os.path
@@ -214,12 +215,23 @@ class BotB:
 
         return b._post_login_init(cookie_file=cookie_file)
 
+    def _retry_get(self, url: str, retry_count: int = 0, **kwargs):
+        """Wrapper for self._s.get with better retry handling"""
+        if retry_count > 3:
+            return None
+        try:
+            ret = self._s.get(url, **kwargs)
+        except:
+            time.sleep(3)
+            return self._retry_get(url, retry_count + 1, **kwargs)
+        return ret
+
     #
     # Public API methods
     #
     def get_botbr_id_by_username(self, username: str) -> Union[int, None]:
         """Get the ID of a BotBr by their username."""
-        ret = self._s.get(f"https://battleofthebits.com/api/v1/botbr/search/{username}")
+        ret = self._retry_get(f"https://battleofthebits.com/api/v1/botbr/search/{username}")
         if ret.status_code != 200:
             return None
 
@@ -235,8 +247,8 @@ class BotB:
 
     def get_botbr_by_id(self, botbr_id: int) -> BotBr:
         """Get BotBr info by BotBr ID."""
-        ret = self._s.get(f"https://battleofthebits.com/api/v1/botbr/load/{botbr_id}")
-        if ret.status_code != 200:
+        ret = self._retry_get(f"https://battleofthebits.com/api/v1/botbr/load/{botbr_id}")
+        if ret is None or ret.status_code != 200:
             return None
 
         botbr_data = ret.json()
@@ -246,7 +258,7 @@ class BotB:
     def get_botbr_by_username(self, username: str) -> BotBr:
         """Get BotBr info by username."""
         botbr_id = self.get_botbr_id_by_username(username)
-        if not botbr_id:
+        if ret is None or not botbr_id:
             return None
 
         return self.get_botbr_by_id(botbr_id)
@@ -265,9 +277,11 @@ class BotB:
         self, filter_types: Union[AlertType, List[AlertType]] = AlertType.ALL
     ) -> List[Alert]:
         """Get a list of alerts for the user."""
-        ret = self._s.get(
+        ret = self._retry_get(
             f"https://battleofthebits.com/ajax/req/botbr/AjaxAlerts/{self.botbr_id}"
         )
+        if not ret:
+            return []
         out = []
         soup = BeautifulSoup(ret.text, SOUP_PARSER)
 

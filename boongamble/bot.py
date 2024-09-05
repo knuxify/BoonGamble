@@ -121,6 +121,11 @@ def main() -> None:
     while True:
         alerts = b.get_alerts(filter_types=[AlertType.GOT_BOONS])
 
+        # Getting alerts times out a lot, try again later if that's the case
+        if not alerts:
+            time.sleep(5)
+            continue
+
         if "handled_alerts" not in state:
             state["handled_alerts"] = 0
 
