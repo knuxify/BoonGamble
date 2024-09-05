@@ -16,6 +16,7 @@ import traceback
 import yaml
 
 MIN_VALUE = config.get("min_value", 1.00)
+MAX_MULTIPLIER = config.get("max_multiplier", 4)
 COOLDOWN = config.get("cooldown", 21600)
 
 # transactions: [{"username": str, "amount": float, "message": str, "timestamp": int}]
@@ -72,6 +73,7 @@ def witty_message(in_value: float, out_value: float) -> str:
                     "Not quite so lucky this time, eh, n00b??",
                     "Better luck next tiem, n00b!!",
                     "Not quite boonsave, eh, n00b??",
+                    "Aw dang it, n00b!",
                 ]
             )
             + f" (lost b{(in_value - out_value):.2f})"
@@ -82,14 +84,19 @@ def witty_message(in_value: float, out_value: float) -> str:
 
     # TODO scale messages based on how close to the multiplier they are
     elif in_value < out_value:
-        return (
-            secrets.choice(
+        msg = ""
+        if in_value == in_value * MAX_MULTIPLIER:
+            msg = "JACKPOT!!! You get teh full multiplier!"
+        elif in_value < out_value * 1.15:
+            msg = "Hey, that's a nice little victory, eh?"
+        else:
+            msg = secrets.choice(
                 [
                     "Lucky you, you win, n00b!!",
+                    "Sweet sweet b00ns coming your way!!",
                 ]
             )
-            + f" (got b{(out_value - in_value):.2f})"
-        )
+        return msg + f" (won b{(out_value - in_value):.2f})"
 
     return "ERROR: Witty Message Machine Broke"
 
