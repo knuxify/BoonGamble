@@ -6,7 +6,11 @@ A fun BotB bot that allows you to play a game of chance with your b00ns. Check i
 
 ## How it works
 
+Send the bot some boons, and it will automatically run a randomizer to calculate the multiplier... if you're lucky, you win more than you sent, if you're unlucky you lose a portion of your boons.
+
 The exact mechanism for probability calculation is stored in [boongamble/gamble.py](https://github.com/knuxify/BoonGamble/blob/main/boongamble/gamble.py). See the code for an explanation.
+
+You can also donate boons to the bot by adding `(donation)` somewhere in your message (with the brackets), or by starting your message with `!boonsave`.
 
 Alternatively, if you want to have a more visual understanding of the values, you can enable debug mode and experiment with the values yourself. This requires matplotlib to be installed. Put `gamble_debug: true` in your `config.yml` and open the Python interpreter:
 

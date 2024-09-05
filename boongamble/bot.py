@@ -160,7 +160,7 @@ def main() -> None:
 
                 # Handle !boonsave command, which allows for a direct transfer bypassing
                 # the gambling process (used to add funds to the bot)
-                if message.lower().startswith("!boonsave"):
+                if message.lower().startswith("!boonsave") or "(donation)" in message.lower():
                     logging.info(f"Got boonsave of b{boons:.2f} from {username}")
                     state["handled_alerts"] += 1
                     continue
