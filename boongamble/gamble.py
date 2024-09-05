@@ -30,7 +30,7 @@ from .config import config
 from . import logger
 
 import secrets
-from typing import Union
+from typing import Optional, Union
 
 # Debug option that allows for viewing the cubic bezier plot.
 GAMBLE_DEBUG: bool = config.get("gamble_debug", False)
@@ -38,14 +38,19 @@ if GAMBLE_DEBUG:
     import matplotlib.pyplot as plt
 
     # adapted from https://github.com/isinsuatay/Cubic-Bezier-With-Python/blob/main/CubicBezier.py
-    def cubic_bezier_plot(p0, p1, p2, p3):
+    def cubic_bezier_plot(p0, p1, p2, p3, filename: str = "plot.png"):
+        plt.clf()
+
         x_values = []
         y_values = []
+        win_values = 0
         t = 0
         while t <= 1:
             x, y = cubic_bezier(t, p0, p1, p2, p3)
             x_values.append(x)
             y_values.append(y)
+            if y > 1:
+                win_values += 1
             t += 0.01
 
         plt.plot(x_values, y_values, label="Probability curve", color="blue")
@@ -62,7 +67,10 @@ if GAMBLE_DEBUG:
         plt.ylabel("Y")
         # plt.axis('equal')
 
-        plt.show()
+        if filename:
+            plt.savefig(filename)
+        else:
+            plt.show()
 
 
 MAX_MULTIPLIER = config.get("max_multiplier", 4)
@@ -96,7 +104,7 @@ def cubic_bezier(
     return out
 
 
-def gamble(input_value: float, max_value: float) -> float:
+def gamble(input_value: float, max_value: float, debug_filename: Optional[str] = None) -> float:
     """
     Calculate probability table based on provided values.
     """
@@ -106,18 +114,19 @@ def gamble(input_value: float, max_value: float) -> float:
         raise ValueError("Input value is larger than maximum value")
 
     # Get the random value we use for calculations.
-    rand = secrets.randbelow(100) / 100
+    rand = secrets.randbelow(100)
 
     # The closer the input value to the maximum value, the more difficult we make it.
-    risk = input_value / max_value
-    assert risk >= 0 and risk <= 1
+    risk = min((input_value / max_value), 1)
 
-    # The minimum risk value is 0.6:
-    if risk < 0.6:
-        risk = 0.6
-    # Otherwise, scale down the risk so that the max value is 0.95.
+    if input_value < (max_value / (len(str(int(max_value))) * 1.25)):
+        # For low input values, the minimum risk value is 0.65: (~25% win rate)
+        if risk < 0.65:
+            risk = 0.65
     else:
-        risk = risk * 0.95
+        # The minimum risk value is 0.75: (~16% win rate)
+        if risk < 0.75:
+            risk = 0.75
 
     # We use a cubic bezier curve to calculate the initial multiplier.
     # Cubic bezier is perhaps not the most obvious choice for this kind of
@@ -125,20 +134,20 @@ def gamble(input_value: float, max_value: float) -> float:
     # all that I have experience in, and 2. it's just simple enough to be
     # easy to implement and it's customizable enough for our usecase.
     p0 = (0, 0)
-    p1 = (risk, (MAX_MULTIPLIER / 2))
-    p2 = (risk, -(risk))
+    p1 = (min((risk + 0.05), 1), (MAX_MULTIPLIER / 2) - (risk / 4))
+    p2 = (min((risk + 0.15), 1), (-0.25 - risk))
     p3 = (1, MAX_MULTIPLIER)
 
     mult = None
     for t in range(0, 101):
         curve = cubic_bezier(t / 100, p0, p1, p2, p3)
-        if int(curve[0] * 100) >= int(rand * 100):
+        if int(curve[0] * 100) >= rand:
             mult = curve[1]
             break
     if mult is None:
         logger.warning("mult was not found for X (this probably doesn't happen), TODO")
         show_stats = True
-        mult = cubic_bezier(rand, p0, p1, p2, p3)[1]
+        mult = cubic_bezier(round(rand / 100, 2), p0, p1, p2, p3)[1]
 
     assert mult is not None
 
@@ -149,11 +158,33 @@ def gamble(input_value: float, max_value: float) -> float:
     out_value = round(out_value, 2)
 
     if GAMBLE_DEBUG or show_stats:
+        # https://stackoverflow.com/a/29257837
+        import math
+        truncate = lambda f, n: math.floor(f * 10 ** n) / 10 ** n
+        win_rate = 0
+        values = {}
+
+        for i in range(0, 101):
+            for t in range(0, 101):
+                curve = cubic_bezier(t / 100, p0, p1, p2, p3)
+                if int(curve[0] * 100) >= i:
+                    if curve[1] >= 1:
+                        win_rate += 1
+                    break
+
+        lose_rate = 100 - win_rate
+
         logger.info(f"""--- GAMBLE STATS ---
-        -> Input b{input_value}, max b{max_value}, output b{input_value * mult}
+        -> Input b{input_value}, max b{max_value}, output b{out_value}
         -> Risk {risk}
-        -> Random value {rand} -- multiplier {mult}""")
+        -> Random value {rand} -- multiplier {mult}
+        -> Curve points:
+           -> p0 {p0}
+           -> p1 {p1}
+           -> p2 {p2}
+           -> p3 {p3}
+        -> Potential win rate ~{win_rate:.2f}%, lose rate ~{lose_rate:.2f}%""")
     if GAMBLE_DEBUG:
-        cubic_bezier_plot(p0, p1, p2, p3)
+        cubic_bezier_plot(p0, p1, p2, p3, filename=debug_filename)
 
     return out_value
