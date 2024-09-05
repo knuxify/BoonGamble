@@ -104,7 +104,9 @@ def cubic_bezier(
     return out
 
 
-def gamble(input_value: float, max_value: float, debug_filename: Optional[str] = None) -> float:
+def gamble(
+    input_value: float, max_value: float, debug_filename: Optional[str] = None
+) -> float:
     """
     Calculate probability table based on provided values.
     """
@@ -160,7 +162,8 @@ def gamble(input_value: float, max_value: float, debug_filename: Optional[str] =
     if GAMBLE_DEBUG or show_stats:
         # https://stackoverflow.com/a/29257837
         import math
-        truncate = lambda f, n: math.floor(f * 10 ** n) / 10 ** n
+
+        truncate = lambda f, n: math.floor(f * 10**n) / 10**n
         win_rate = 0
         values = {}
 

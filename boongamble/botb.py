@@ -196,7 +196,7 @@ class BotB:
 
             if login_post.status_code != 200:
                 raise UnauthenticatedException(
-                    f"Failed to log in; check email and password"
+                    "Failed to log in; check email and password"
                 )
 
             return b._post_login_init(cookie_file=cookie_file)
