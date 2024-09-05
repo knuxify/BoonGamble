@@ -6,3 +6,5 @@ __pycache__/
 _state.yml
 _cookies.pkl
 config.yml
+
+tests/testgamble-*.png
