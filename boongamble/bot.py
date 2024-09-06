@@ -5,7 +5,7 @@ Main loop for the operation of the bot.
 
 from . import logger
 from .config import config
-from .botb import AlertType, BotB
+from .botb import Alert, AlertType, BotB
 from .gamble import gamble, to_max_value
 
 import logging
@@ -31,9 +31,8 @@ def save_state() -> None:
     with open("_state.yml", "w+") as state_file:
         yaml.dump(state, state_file)
 
-
 def give_boons_logged(
-    b: BotB, input_amount: float, username: str, amount: float, message: str, **kwargs
+    b: BotB, input_alert: Alert, username: str, amount: float, message: str, **kwargs
 ):
     """BotB.give_boons() but logs transactions."""
     if "transactions" not in state:
@@ -41,7 +40,8 @@ def give_boons_logged(
     state["transactions"].append(
         {
             "username": username,
-            "input_amount": input_amount,
+            "input_amount": input_alert.data["boons"],
+            "input_message": input_alert.data.get("message", ""),
             "amount": amount,
             "message": message,
             "timestamp": time.time(),
@@ -113,10 +113,23 @@ def main() -> None:
 
     logger.info("Logged in succesfully.")
 
-    # Since alerts have no timestamps, we need to rely on the number of already
-    # handled alerts (XXX - do alerts ever get truncated? They can move around
-    # when merged together, but since we filter for boon alerts only which don't
-    # move this isn't a problem).
+    # There are two major problems with parsing alerts:
+    # - There is no way to get an exact timestamp, only a relative one;
+    # - Alerts on the alert page are truncated to 100.
+    # So, we keep a rolling log of every transaction and handle new alerts
+    # if any of the entries don't match up anymore.
+
+    def alert_same_as_transaction(alert: Alert, transaction: dict):
+        if alert.data["boons"] != transaction["input_amount"]:
+            return False
+        if alert.data["username"] != transaction["username"]:
+            return False
+        if "message" in alert.data and "input_message" in transaction and \
+                alert.data["message"] != transaction["input_message"]:
+            return False
+
+        return True
+
 
     while True:
         alerts = b.get_alerts(filter_types=[AlertType.GOT_BOONS])
@@ -126,15 +139,32 @@ def main() -> None:
             time.sleep(5)
             continue
 
-        if "handled_alerts" not in state:
-            state["handled_alerts"] = 0
+        if "transactions" not in state:
+            state["transactions"] = []
 
-        if len(alerts) > state["handled_alerts"]:
+        # Lazy: We check the last alert in the list, if it doesn't match up,
+        # we have new alerts.
+        if len(state["transactions"]) < len(alerts):
+            # untested
+            new_alerts = alerts[:len(alerts)-len(state["transactions"])]
+        else:
+            # FIXME this is broken for states where transactions < 99
+            transactions = state["transactions"][-len(alerts):]
+            i = len(transactions)-1
+            new_alerts = []
+            for alert in alerts:
+                if not alert_same_as_transaction(alert, transactions[i]):
+                    new_alerts.append(alert)
+                    i -= 1
+                else:
+                    break
+
+        if new_alerts:
             logger.info(
-                f'Need to parse {len(alerts) - state["handled_alerts"]} alerts...'
+                f'Need to parse {len(new_alerts)} alerts...'
             )
             # New boon transfer, time to parse
-            for alert in alerts[: (len(alerts) - state["handled_alerts"])]:
+            for alert in new_alerts[::-1]:
                 # Don't handle too many transfers right after each other lest we anger
                 # the site gods
                 time.sleep(1)
@@ -152,7 +182,7 @@ def main() -> None:
                     except:  # noqa: E722
                         give_boons_logged(
                             b,
-                            boons,
+                            alert,
                             username,
                             0.01,
                             message="Failed to get boon count, contact admin!!",
@@ -182,7 +212,7 @@ def main() -> None:
 
                         give_boons_logged(
                             b,
-                            boons,
+                            alert,
                             username,
                             boons,
                             message=f"Not so fast, n00b! (Cooldown: wait {cooldown_left_str} & try again)",
@@ -203,7 +233,7 @@ def main() -> None:
                 if boons > max_value:
                     give_boons_logged(
                         b,
-                        boons,
+                        alert,
                         username,
                         boons,
                         message=f"Whaddarya, tha bank?! (Max. value is b{max_value:.2f})",
@@ -220,7 +250,7 @@ def main() -> None:
                 if boons < MIN_VALUE:
                     give_boons_logged(
                         b,
-                        boons,
+                        alert,
                         username,
                         boons,
                         message=f"That won't do, n00b!! (Min. value is b{MIN_VALUE:.2f})",
@@ -239,7 +269,7 @@ def main() -> None:
                 except:  # noqa: E722
                     give_boons_logged(
                         b,
-                        boons,
+                        alert,
                         username,
                         boons,
                         message="Yikes, sumthin's wrong!! (Internal exception: GAMBL_ERR)",
@@ -259,7 +289,7 @@ def main() -> None:
                 # Send the win amount back to the player with a witty message
                 give_boons_logged(
                     b,
-                    boons,
+                    alert,
                     username,
                     out_value,
                     message=witty_message(boons, out_value),

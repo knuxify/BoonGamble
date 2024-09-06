@@ -276,7 +276,7 @@ class BotB:
     def get_alerts(
         self, filter_types: Union[AlertType, List[AlertType]] = AlertType.ALL
     ) -> List[Alert]:
-        """Get a list of alerts for the user."""
+        """Get the last 100 alerts for the user."""
         ret = self._retry_get(
             f"https://battleofthebits.com/ajax/req/botbr/AjaxAlerts/{self.botbr_id}"
         )
