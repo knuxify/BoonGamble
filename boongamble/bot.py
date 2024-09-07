@@ -101,6 +101,40 @@ def witty_message(in_value: float, out_value: float) -> str:
     return "ERROR: Witty Message Machine Broke"
 
 
+def alert_same_as_alert(a1: Alert, a2: Alert):
+    if a1.data["boons"] != a2.data["boons"]:
+        return False
+    if a1.data["username"] != a2.data["username"]:
+        return False
+    if a1.data["message"] != a2.data["message"]:
+        return False
+    return True
+
+
+def alert_same_as_transaction(alert: Alert, transaction: dict):
+    if alert.data["boons"] != transaction["input_amount"]:
+        return False
+    if alert.data["username"] != transaction["username"]:
+        return False
+    if "message" in alert.data and "input_message" in transaction and \
+            alert.data["message"] != transaction["input_message"]:
+        return False
+
+    return True
+
+
+def transaction_same_as_transaction(t1: dict, t2: dict):
+    if t1["input_amount"] != t1["input_amount"]:
+        return False
+    if t1["username"] != t1["username"]:
+        return False
+    if "input_message" in t1 and "input_message" in t2 and \
+            t1["input_message"] != t2["input_message"]:
+        return False
+
+    return True
+
+
 def main() -> None:
     """Main loop of the bot."""
     logger.info("Starting BoonGamble...")
@@ -113,24 +147,6 @@ def main() -> None:
 
     logger.info("Logged in succesfully.")
 
-    # There are two major problems with parsing alerts:
-    # - There is no way to get an exact timestamp, only a relative one;
-    # - Alerts on the alert page are truncated to 100.
-    # So, we keep a rolling log of every transaction and handle new alerts
-    # if any of the entries don't match up anymore.
-
-    def alert_same_as_transaction(alert: Alert, transaction: dict):
-        if alert.data["boons"] != transaction["input_amount"]:
-            return False
-        if alert.data["username"] != transaction["username"]:
-            return False
-        if "message" in alert.data and "input_message" in transaction and \
-                alert.data["message"] != transaction["input_message"]:
-            return False
-
-        return True
-
-
     while True:
         alerts = b.get_alerts(filter_types=[AlertType.GOT_BOONS])
 
@@ -142,22 +158,47 @@ def main() -> None:
         if "transactions" not in state:
             state["transactions"] = []
 
-        # Lazy: We check the last alert in the list, if it doesn't match up,
-        # we have new alerts.
-        if len(state["transactions"]) < len(alerts):
-            # untested
-            new_alerts = alerts[:len(alerts)-len(state["transactions"])]
+        # There are two major problems with parsing alerts:
+        # - There is no way to get an exact timestamp, only a relative one;
+        # - Alerts on the alert page are truncated to 100.
+        # So, we use transaction logs and check if the entries match up.
+        #
+        # puke if you're reading this, please add a timestamp data attribute
+        # to the alerts, thanks <3 (or a real user access API, though that
+        # is a very steep thing to request + probably could lead to abuse.)
+        if state["handled_alerts"] < 100:
+            new_alerts = alerts[state["handled_alerts"]:]
+
         else:
-            # FIXME this is broken for states where transactions < 99
-            transactions = state["transactions"][-len(alerts):]
-            i = len(transactions)-1
+            last_transactions = list(reversed(state["transactions"][-100:]))
             new_alerts = []
             for alert in alerts:
-                if not alert_same_as_transaction(alert, transactions[i]):
+                if not alert_same_as_transaction(alert, last_transactions[0]):
                     new_alerts.append(alert)
-                    i -= 1
                 else:
                     break
+
+            # This breaks on double alerts with the same message, sender and boon count.
+            # In that case, we count how many alerts with this message we had before,
+            # vs how much we have now. If the number has changed, we add the changed number.
+            # The only case in which this can break is if someone sends more than 100 alerts
+            # in the few seconds it takes the bot to refresh or if someone sends more than
+            # 98 or so comments. Neither of these are possible with how slow BotB is,
+            # and you better not try it (:
+            if alert_same_as_transaction(alerts[len(new_alerts)], last_transactions[0]):
+                a_doubles = 1
+                for alert in alerts[1:]:
+                    if not alert_same_as_alert(alert, alerts[0]):
+                        break
+                    a_doubles += 1
+                t_doubles = 1
+                for transaction in last_transactions[1:]:
+                    if not transaction_same_as_transaction(transaction, last_transactions[0]):
+                        break
+                    t_doubles += 1
+                new_doubles = a_doubles - t_doubles
+                if new_doubles > 0:
+                    new_alerts += alerts[len(new_alerts):len(new_alerts)+new_doubles]
 
         if new_alerts:
             logger.info(
