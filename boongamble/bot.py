@@ -147,8 +147,22 @@ def main() -> None:
 
     logger.info("Logged in succesfully.")
 
+    last_point_refresh_at = time.time()
+
     while True:
         alerts = b.get_alerts(filter_types=[AlertType.GOT_BOONS])
+
+        # Get at least one regular BotB page so that we can get Playa points
+        # (otherwise we only get them when accessing the GaveBoons endpoint,
+        # since for alerts we use the raw ajax endpoint and for getting the
+        # bank state we use the API, neither of which count towards the playa
+        # counter)
+        if last_point_refresh_at - time.time() > 3600:
+            try:
+                if b._retry_get("https://battleofthebits.com/"):
+                    last_point_refresh_at = time.time()
+            except:
+                pass
 
         # Getting alerts times out a lot, try again later if that's the case
         if not alerts:
