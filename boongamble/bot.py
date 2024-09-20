@@ -157,7 +157,7 @@ def main() -> None:
         # since for alerts we use the raw ajax endpoint and for getting the
         # bank state we use the API, neither of which count towards the playa
         # counter)
-        if last_point_refresh_at - time.time() > 3600:
+        if time.time() - last_point_refresh_at > 3600:
             try:
                 if b._retry_get("https://battleofthebits.com/"):
                     last_point_refresh_at = time.time()
